@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIP PLAYLIST - ĐẠI CA KHANG</title>
+    <style>
+        :root { --gold: #ffeb3b; --red: #ff0000; --neon: #00ff00; }
+        body { margin: 0; min-height: 100vh; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; font-family: 'Arial', sans-serif; }
+
+        /* Nền LED 7 Màu cực gắt */
+        .led-bg {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -2;
+            background: linear-gradient(45deg, #f00, #ff7300, #fffb00, #48ff00, #00ffd5, #002bff, #7a00ff, #ff00c8, #f00);
+            background-size: 400% 400%; animation: led-move 10s linear infinite; opacity: 0.35; filter: blur(40px);
+        }
+        @keyframes led-move { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+
+        canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; }
+
+        /* Card Nhạc VIP */
+        .player {
+            width: 90%; max-width: 420px; background: rgba(0,0,0,0.9); border: 4px solid var(--gold); border-radius: 35px;
+            padding: 30px 20px; text-align: center; box-shadow: 0 0 50px var(--red); color: #fff; position: relative;
+        }
+
+        .led-text {
+            font-size: 26px; font-weight: 900; margin-bottom: 20px;
+            background: linear-gradient(to right, red, orange, yellow, green, blue, indigo, violet);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            animation: hue 3s linear infinite; text-shadow: 0 0 10px rgba(255,255,255,0.3);
+        }
+        @keyframes hue { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(360deg); } }
+
+        /* Đĩa Xoay Girl Xinh */
+        .cd {
+            width: 140px; height: 140px; border-radius: 50%; border: 4px solid var(--gold);
+            margin: 0 auto 15px; background: url('https://i.ibb.co/L95bFvS/girl-avatar.jpg') center/cover;
+            animation: rotate 8s linear infinite; animation-play-state: paused;
+            box-shadow: 0 0 25px var(--red);
+        }
+        @keyframes rotate { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+
+        /* KHU VỰC PLAYLIST NHIỀU TỆP */
+        .playlist {
+            margin: 15px 0; max-height: 200px; overflow-y: scroll;
+            background: rgba(255,255,255,0.05); border: 2px solid var(--gold); border-radius: 15px;
+            text-align: left;
+        }
+        .playlist::-webkit-scrollbar { width: 5px; }
+        .playlist::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 10px; }
+
+        .song-item {
+            padding: 12px 15px; border-bottom: 1px solid #333; cursor: pointer;
+            font-size: 14px; font-weight: bold; transition: 0.2s; display: flex; align-items: center;
+        }
+        .song-item:hover { background: rgba(255, 235, 59, 0.2); }
+        .song-item.active { background: var(--red); color: white; border-left: 5px solid var(--gold); }
+
+        .controls { display: flex; justify-content: center; gap: 20px; align-items: center; margin-top: 15px; }
+        .btn-circle { width: 60px; height: 60px; border-radius: 50%; border: 2px solid var(--gold); background: var(--red); color: white; font-size: 25px; cursor: pointer; }
+        
+        input[type="range"] { width: 100%; accent-color: var(--gold); margin: 15px 0; }
+
+        /* Admin Bí Mật */
+        .admin-trigger { font-size: 10px; opacity: 0.3; margin-top: 15px; cursor: pointer; }
+        #admin-panel { display: none; background: #111; padding: 15px; border-radius: 15px; border: 1px dashed var(--gold); margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="led-bg"></div>
+<canvas id="fw"></canvas>
+
+<div class="player">
+    <div class="led-text">🏮 HỘI NHẠC ĐẠI CA KHANG 🏮</div>
+    <div class="cd" id="cd"></div>
+    <div id="song-title" style="color: var(--gold); font-weight: bold;">Chưa có nhạc...</div>
+
+    <div class="playlist" id="list">
+        <p style="text-align:center; padding: 20px; font-size: 12px; opacity: 0.5;">Đại ca hãy vào Admin để gắn tệp nhạc!</p>
+    </div>
+
+    <input type="range" id="seek" value="0">
+
+    <div class="controls">
+        <button class="btn-circle" onclick="prev()">⏮</button>
+        <button class="btn-circle" id="playBtn" onclick="toggle()">▶</button>
+        <button class="btn-circle" onclick="next()">⏭</button>
+    </div>
+
+    <div class="admin-trigger" onclick="showAdmin()">ADMIN LOGIN</div>
+    <div id="admin-panel">
+        <input type="password" id="pass" placeholder="Mã đại ca..." style="padding: 5px; width: 60%;">
+        <button onclick="login()">Vào</button>
+        <div id="upload" style="display:none; margin-top:10px;">
+            <p style="color:var(--neon); font-size:12px;">Chọn NHIỀU tệp một lúc (nhấn giữ):</p>
+            <input type="file" id="files" multiple accept="audio/*">
+        </div>
+    </div>
+</div>
+
+<audio id="audio"></audio>
+
+<script>
+    const audio = document.getElementById('audio');
+    const cd = document.getElementById('cd');
+    const playBtn = document.getElementById('playBtn');
+    let songs = [];
+    let idx = 0;
+    const PASS = "khangvip99";
+
+    // Pháo hoa Logic
+    const cvs = document.getElementById('fw');
+    const ctx = cvs.getContext('2d');
+    cvs.width = window.innerWidth; cvs.height = window.innerHeight;
+    
+    function drawFW() {
+        ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.fillRect(0,0,cvs.width,cvs.height);
+        if (!audio.paused && Math.random() < 0.08) {
+            let x = Math.random() * cvs.width, y = Math.random() * cvs.height;
+            ctx.fillStyle = `hsl(${Math.random()*360}, 100%, 50%)`;
+            ctx.beginPath(); ctx.arc(x, y, Math.random()*5+2, 0, Math.PI*2); ctx.fill();
+        }
+        requestAnimationFrame(drawFW);
+    }
+    drawFW();
+
+    // Admin Logic
+    function showAdmin() { document.getElementById('admin-panel').style.display = 'block'; }
+    function login() {
+        if(document.getElementById('pass').value === PASS) {
+            document.getElementById('upload').style.display = 'block';
+            alert("Đã mở khóa! Đại ca chọn nhiều tệp nhạc đi.");
+        }
+    }
+
+    // Gắn hàng loạt tệp
+    document.getElementById('files').onchange = (e) => {
+        const selectedFiles = Array.from(e.target.files);
+        if(selectedFiles.length > 0) {
+            songs = selectedFiles.map(f => ({ name: f.name, url: URL.createObjectURL(f) }));
+            render();
+            playSong(0);
+        }
+    };
+
+    function render() {
+        const listDiv = document.getElementById('list');
+        listDiv.innerHTML = songs.map((s, i) => `
+            <div class="song-item ${i === idx ? 'active' : ''}" onclick="playSong(${i})">
+                <span style="margin-right:10px;">${i+1}.</span> ${s.name}
+            </div>
+        `).join('');
+    }
+
+    function playSong(i) {
+        idx = i;
+        audio.src = songs[idx].url;
+        document.getElementById('song-title').innerText = songs[idx].name;
+        render();
+        audio.play();
+        playBtn.innerText = "⏸";
+        cd.style.animationPlayState = 'running';
+    }
+
+    function toggle() {
+        if(audio.paused) { audio.play(); playBtn.innerText = "⏸"; cd.style.animationPlayState = 'running'; }
+        else { audio.pause(); playBtn.innerText = "▶"; cd.style.animationPlayState = 'paused'; }
+    }
+
+    function next() { idx = (idx + 1) % songs.length; playSong(idx); }
+    function prev() { idx = (idx - 1 + songs.length) % songs.length; playSong(idx); }
+
+    audio.ontimeupdate = () => { document.getElementById('seek').value = (audio.currentTime/audio.duration)*100 || 0; };
+    document.getElementById('seek').oninput = () => { audio.currentTime = (document.getElementById('seek').value/100) * audio.duration; };
+    audio.onended = () => { next(); };
+</script>
+</body>
+</html>
